@@ -176,6 +176,11 @@ async function addTask(name) {
   }
 
   await waitForFormToClose(input);
+
+  // After the form closes, React re-renders the task list before re-showing the Add Task div.
+  // Wait for it to reappear so the next addTask() call can find it immediately.
+  await waitForVisible(() => findAddTaskElement() ?? findVisibleButtonByText('Add Task'), 3000)
+    .catch(() => {}); // non-fatal — next iteration will handle a missing button itself
 }
 
 // MutationObserver-based form-close detection — reacts instantly instead of polling every 100ms
@@ -223,8 +228,6 @@ async function syncTasks(tasks) {
     await addTask(taskName);
     existing.add(normalized);
     added++;
-
-    await sleep(50); // small gap so pomofocus can settle between tasks
   }
 
   return { added, skipped };
