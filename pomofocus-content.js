@@ -9,6 +9,12 @@
 // The "+ Create New" button in the header is for TEMPLATES — do not use it.
 // ────────────────────────────────────────────────────────────────────────────
 
+// ─── Session cache ─────────────────────────────────────────────────────────────
+// Tracks tasks added in this page session. Persists across multiple syncs without
+// a page reload. On reload the content script re-runs and the cache resets, but
+// at that point the DOM read works correctly from server-rendered data.
+const _sessionAdded = new Set();
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function normalizeTaskName(name) {
@@ -99,22 +105,45 @@ function isLoggedIn() {
 function getExistingTaskNames() {
   const names = new Set();
 
-  // Find the Tasks section heading, then scope the search to that section's container
-  const tasksHeading = Array.from(document.querySelectorAll('span, h2, h3, div'))
-    .find(el => el.textContent?.trim() === 'Tasks' && el.offsetParent !== null);
-
-  const scope = tasksHeading?.closest('section, [class*="task"], div') || document.body;
-
-  // Collect text from <p> and <span> elements in the task list area
-  // Filter: text must be between 1 and 200 chars and not purely numeric
-  scope.querySelectorAll('p, span').forEach(el => {
-    // Skip elements that contain child elements (only leaf text nodes)
-    if (el.children.length > 0) return;
-    const text = el.textContent?.trim();
-    if (text && text.length > 0 && text.length < 200 && !/^\d+$/.test(text)) {
-      names.add(normalizeTaskName(text));
+  // Anchor on the Add Task leaf — reliable because findAddTaskElement() already
+  // proves this lookup works. Go up two levels to reach the task list container.
+  let addTaskLeaf = null;
+  for (const el of document.querySelectorAll('*')) {
+    if (!el.offsetParent) continue;
+    if (el.children.length > 0) continue;
+    const text = (el.innerText ?? el.textContent)?.trim();
+    if (text === 'Add Task' && !el.closest('[role="dialog"]')) {
+      addTaskLeaf = el;
+      break;
     }
-  });
+  }
+
+  if (!addTaskLeaf) return names;
+
+  const taskListContainer = addTaskLeaf.parentElement?.parentElement;
+  if (!taskListContainer) return names;
+
+  // Use innerText — returns visible text exactly as rendered, one line per block element.
+  // This avoids fragile querySelector traversal of deeply nested React components.
+  const rawText = taskListContainer.innerText || '';
+
+  const SKIP = new Set([
+    'tasks', 'add task', 'time to focus!',
+    "you've finished all your tasks!",
+  ]);
+
+  for (const rawLine of rawText.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.length < 2 || line.length > 200) continue;
+    if (SKIP.has(line.toLowerCase())) continue;
+    if (/^\d+$/.test(line)) continue;           // plain numbers (pomodoro counts)
+    if (/^\d+\s*\/\s*\d+$/.test(line)) continue; // "0 / 1" ratio format
+
+    // If the task name and count landed on the same line (e.g. "My Task 0 / 1"),
+    // strip the trailing count before normalising.
+    const cleaned = line.replace(/\s+\d+\s*\/\s*\d+\s*$/, '').trim();
+    if (cleaned.length > 1) names.add(normalizeTaskName(cleaned));
+  }
 
   return names;
 }
@@ -216,26 +245,22 @@ async function syncTasks(tasks) {
     );
   }
 
+  // Build the existing set: DOM read + anything added earlier in this page session.
+  // The session cache handles the case where the user syncs twice without reloading —
+  // the DOM read may not reflect just-added tasks, but the cache always does.
   const existing = getExistingTaskNames();
-  let added = 0;
-  let skipped = 0;
+  for (const name of _sessionAdded) existing.add(name);
 
-  for (const task of tasks) {
-    const normalized = normalizeTaskName(task.name);
+  const toAdd = tasks.filter(t => !existing.has(normalizeTaskName(t.name)));
+  const skipped = tasks.length - toAdd.length;
 
-    if (existing.has(normalized)) {
-      skipped++;
-      continue;
-    }
-
+  for (const task of toAdd) {
     const taskName = task.name.length > 100 ? task.name.slice(0, 97) + '…' : task.name;
-
     await addTask(taskName);
-    existing.add(normalized);
-    added++;
+    _sessionAdded.add(normalizeTaskName(task.name)); // remember for next sync
   }
 
-  return { added, skipped };
+  return { added: toAdd.length, skipped };
 }
 
 // ─── Message listener ──────────────────────────────────────────────────────────
