@@ -32,11 +32,12 @@ async function fetchTrelloCards(apiKey, token, boardId, includeLists) {
     );
   }
 
-  // Fetch open (non-archived) cards from each matching list in parallel
+  // Fetch open (non-archived) cards from each matching list in parallel.
+  // Also request dueComplete so we can exclude cards the user has already checked off.
   const cardRequests = targetLists.map(list =>
     fetch(
       `https://api.trello.com/1/lists/${list.id}/cards` +
-      `?${auth}&filter=open&fields=name,desc,due`
+      `?${auth}&filter=open&fields=name,desc,due,dueComplete`
     ).then(r => {
       if (!r.ok) throw new Error(`Cards API error ${r.status} for list "${list.name}"`);
       return r.json();
@@ -47,6 +48,7 @@ async function fetchTrelloCards(apiKey, token, boardId, includeLists) {
 
   return cardArrays
     .flat()
+    .filter(card => !card.dueComplete)   // exclude cards marked complete via due-date checkbox
     .map(card => ({
       name: card.name.trim(),
       desc: (card.desc || '').trim(),
