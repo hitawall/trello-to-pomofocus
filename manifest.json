@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Trello to Pomofocus",
+  "version": "1.0.0",
+  "description": "Sync pending Trello cards to pomofocus.io tasks with duplicate detection",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "*://pomofocus.io/*",
+    "*://api.trello.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://pomofocus.io/*"],
+      "js": ["pomofocus-content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Trello to Pomofocus",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
