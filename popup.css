@@ -1,0 +1,209 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 300px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f5f5f5;
+  color: #333;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  background: #ba4949;
+  color: white;
+}
+
+.header-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.header h1 {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Views */
+.view {
+  flex: 1;
+  padding: 16px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Setup / Empty state */
+.empty-state {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.empty-msg {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+/* Config card */
+.config-card {
+  background: white;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid #e8e8e8;
+}
+
+.config-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.config-row + .config-row {
+  border-top: 1px solid #f0f0f0;
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.config-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #999;
+  flex-shrink: 0;
+  width: 36px;
+}
+
+.config-value {
+  font-size: 13px;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: #ba4949;
+  color: white;
+  width: 100%;
+}
+
+.btn-primary:hover {
+  background: #a83d3d;
+}
+
+.btn-sync {
+  width: 100%;
+  padding: 12px;
+  background: #ba4949;
+  color: white;
+  font-size: 14px;
+}
+
+.btn-sync:hover:not(:disabled) {
+  background: #a83d3d;
+}
+
+.btn-sync:disabled {
+  background: #d4a0a0;
+  cursor: not-allowed;
+}
+
+/* Spinner */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Status box */
+.status-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.status-box.success {
+  background: #edf7ed;
+  color: #2e7d32;
+  border: 1px solid #c8e6c9;
+}
+
+.status-box.error {
+  background: #fdecea;
+  color: #c62828;
+  border: 1px solid #ffcdd2;
+}
+
+.status-box.info {
+  background: #e8f4fd;
+  color: #1565c0;
+  border: 1px solid #bbdefb;
+}
+
+/* Footer */
+.footer {
+  padding: 10px 16px;
+  border-top: 1px solid #e8e8e8;
+  background: #fafafa;
+  text-align: right;
+}
+
+.footer-link {
+  font-size: 12px;
+  color: #999;
+  text-decoration: none;
+}
+
+.footer-link:hover {
+  color: #ba4949;
+  text-decoration: underline;
+}

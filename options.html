@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trello to Pomofocus — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <span class="logo">🍅</span>
+      <h1>Trello to Pomofocus</h1>
+      <p class="subtitle">Settings</p>
+    </header>
+
+    <main class="content">
+
+      <!-- Step 1: API Key + Token -->
+      <section class="section" id="section-apikey">
+        <h2 class="section-title">
+          <span class="step">1</span> Trello API Key &amp; Token
+        </h2>
+        <p class="section-desc">
+          Get your API key from
+          <a href="https://trello.com/app-key" target="_blank" rel="noopener">trello.com/app-key</a>
+        </p>
+        <div class="form-row">
+          <input
+            type="text"
+            id="input-apikey"
+            class="input"
+            placeholder="Enter your Trello API key"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
+
+        <button id="btn-authorize" class="btn btn-primary" disabled>
+          Open Trello Authorization Page
+        </button>
+
+        <!-- Token paste area — shown after clicking authorize -->
+        <div id="token-paste-area" class="token-paste-area hidden">
+          <p class="token-instructions">
+            Trello opened in a new tab. After you click <strong>Allow</strong>,
+            Trello will show your token on screen. Copy it and paste it below.
+          </p>
+          <input
+            type="text"
+            id="input-token"
+            class="input"
+            placeholder="Paste your Trello token here"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="btn-confirm-token" class="btn btn-primary btn-confirm">
+            Confirm Token
+          </button>
+        </div>
+
+        <div id="token-status" class="token-status hidden"></div>
+      </section>
+
+      <!-- Step 2: Board Selection -->
+      <section class="section" id="section-board">
+        <h2 class="section-title">
+          <span class="step">2</span> Select Board
+        </h2>
+        <p class="section-desc">Choose the Trello board to sync tasks from.</p>
+        <div class="form-row">
+          <select id="select-board" class="input select" disabled>
+            <option value="">— Authorize first —</option>
+          </select>
+        </div>
+        <button id="btn-load-boards" class="btn btn-secondary" disabled>
+          Load Boards
+        </button>
+      </section>
+
+      <!-- Step 3: List Names -->
+      <section class="section" id="section-lists">
+        <h2 class="section-title">
+          <span class="step">3</span> List Names to Sync
+        </h2>
+        <p class="section-desc">
+          Comma-separated list names to include. Cards in these lists will be synced.
+        </p>
+        <div class="form-row">
+          <input
+            type="text"
+            id="input-lists"
+            class="input"
+            placeholder="To Do, In Progress"
+            value="To Do, In Progress"
+          >
+        </div>
+        <p class="hint">Matching is case-insensitive. Example: <code>To Do, In Progress, Doing</code></p>
+      </section>
+
+      <!-- Actions -->
+      <div class="actions">
+        <button id="btn-save" class="btn btn-primary" disabled>Save Settings</button>
+        <button id="btn-test" class="btn btn-secondary" disabled>Test Connection</button>
+      </div>
+
+      <div id="save-status" class="save-status hidden"></div>
+
+    </main>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

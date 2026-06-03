@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trello to Pomofocus</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="header-icon">🍅</div>
+      <div class="header-text">
+        <h1>Trello → Pomofocus</h1>
+      </div>
+    </header>
+
+    <!-- Not configured yet -->
+    <div id="view-setup" class="view hidden">
+      <div class="empty-state">
+        <p class="empty-msg">Connect your Trello account to get started.</p>
+        <button id="btn-open-options" class="btn btn-primary">Open Settings</button>
+      </div>
+    </div>
+
+    <!-- Ready to sync -->
+    <div id="view-main" class="view hidden">
+      <div class="config-card">
+        <div class="config-row">
+          <span class="config-label">Board</span>
+          <span id="display-board" class="config-value">—</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">Lists</span>
+          <span id="display-lists" class="config-value">—</span>
+        </div>
+      </div>
+
+      <button id="btn-sync" class="btn btn-sync">
+        <span id="sync-label">Sync to Pomofocus</span>
+        <span id="sync-spinner" class="spinner hidden"></span>
+      </button>
+
+      <div id="status-box" class="status-box hidden"></div>
+    </div>
+
+    <footer class="footer">
+      <a id="link-settings" href="#" class="footer-link">Settings</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
