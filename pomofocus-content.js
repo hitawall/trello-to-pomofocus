@@ -99,9 +99,8 @@ function isLoggedIn() {
 function getExistingTaskNames() {
   const names = new Set();
 
-  // Anchor on the "Add Task" leaf element — we know exactly how to find it in the DOM.
-  // The onclick parent is what findAddTaskElement() returns; its parent is the task list
-  // container. Every sibling of the onclick div that isn't itself is a task item.
+  // Anchor on the Add Task leaf — reliable because findAddTaskElement() already
+  // proves this lookup works. Go up two levels to reach the task list container.
   let addTaskLeaf = null;
   for (const el of document.querySelectorAll('*')) {
     if (!el.offsetParent) continue;
@@ -115,24 +114,29 @@ function getExistingTaskNames() {
 
   if (!addTaskLeaf) return names;
 
-  // addTaskLeaf → onclick div → task list container
   const taskListContainer = addTaskLeaf.parentElement?.parentElement;
   if (!taskListContainer) return names;
 
-  for (const child of taskListContainer.children) {
-    if (child.contains(addTaskLeaf)) continue; // skip the Add Task area itself
-    if (!child.offsetParent) continue;         // skip hidden items
+  // Use innerText — returns visible text exactly as rendered, one line per block element.
+  // This avoids fragile querySelector traversal of deeply nested React components.
+  const rawText = taskListContainer.innerText || '';
 
-    // The first visible leaf text inside a task item is the task name
-    for (const el of child.querySelectorAll('*')) {
-      if (el.children.length > 0) continue;
-      if (!el.offsetParent) continue;
-      const text = (el.innerText ?? el.textContent)?.trim();
-      if (text && text.length > 0 && text.length < 200 && !/^\d+$/.test(text)) {
-        names.add(normalizeTaskName(text));
-        break; // one name per task item
-      }
-    }
+  const SKIP = new Set([
+    'tasks', 'add task', 'time to focus!',
+    "you've finished all your tasks!",
+  ]);
+
+  for (const rawLine of rawText.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.length < 2 || line.length > 200) continue;
+    if (SKIP.has(line.toLowerCase())) continue;
+    if (/^\d+$/.test(line)) continue;           // plain numbers (pomodoro counts)
+    if (/^\d+\s*\/\s*\d+$/.test(line)) continue; // "0 / 1" ratio format
+
+    // If the task name and count landed on the same line (e.g. "My Task 0 / 1"),
+    // strip the trailing count before normalising.
+    const cleaned = line.replace(/\s+\d+\s*\/\s*\d+\s*$/, '').trim();
+    if (cleaned.length > 1) names.add(normalizeTaskName(cleaned));
   }
 
   return names;
@@ -235,26 +239,18 @@ async function syncTasks(tasks) {
     );
   }
 
+  // Fetch both sets up front, then add only the difference.
   const existing = getExistingTaskNames();
-  let added = 0;
-  let skipped = 0;
 
-  for (const task of tasks) {
-    const normalized = normalizeTaskName(task.name);
+  const toAdd = tasks.filter(t => !existing.has(normalizeTaskName(t.name)));
+  const skipped = tasks.length - toAdd.length;
 
-    if (existing.has(normalized)) {
-      skipped++;
-      continue;
-    }
-
+  for (const task of toAdd) {
     const taskName = task.name.length > 100 ? task.name.slice(0, 97) + '…' : task.name;
-
     await addTask(taskName);
-    existing.add(normalized);
-    added++;
   }
 
-  return { added, skipped };
+  return { added: toAdd.length, skipped };
 }
 
 // ─── Message listener ──────────────────────────────────────────────────────────
