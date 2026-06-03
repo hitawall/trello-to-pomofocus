@@ -122,14 +122,10 @@ function getExistingTaskNames() {
 // ─── Add a single task ─────────────────────────────────────────────────────────
 
 async function addTask(name) {
-  // Guard: close any accidentally-open modal first (e.g. from previous failed attempt)
+  // Close any accidental modal without sleeping — if none is open this is instant
   closeOpenModal();
-  await sleep(100);
 
-  // Find the "+ Add Task" clickable area in the main task list.
-  // It is a <div onclick> element, not a <button> — findAddTaskElement() handles this.
   const addBtn = findAddTaskElement() ?? findVisibleButtonByText('Add Task');
-
   if (!addBtn) {
     throw new Error(
       'Could not find the "+ Add Task" area. ' +
@@ -139,15 +135,14 @@ async function addTask(name) {
   }
 
   addBtn.click();
-  await sleep(100);
 
-  // Wait for a visible text input to appear (the task name field)
+  // waitForVisible uses MutationObserver so it reacts the moment the input appears —
+  // no fixed sleep needed between the click and waiting.
   let input;
   try {
     input = await waitForVisible(() => {
       return Array.from(document.querySelectorAll('input[type="text"], input:not([type]), textarea'))
         .find(el => el.offsetParent !== null &&
-          // Exclude inputs we know are not for task names
           el.id !== 'input_profile_name' &&
           el.id !== 'imgupload' &&
           el.placeholder !== 'Search Tasks' &&
@@ -168,35 +163,36 @@ async function addTask(name) {
     );
   }
 
-  // Give React a render tick
-  await sleep(80);
+  // Form is fully rendered by the time waitForVisible resolves — set value immediately
   input.focus();
   setReactValue(input, name);
-  await sleep(80);
 
-  // Find Save button: visible button with text "Save" that is near the input
   const saveBtn = findVisibleButtonByText('Save');
   if (saveBtn) {
     saveBtn.click();
   } else {
-    // Fallback: Enter key
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
     input.dispatchEvent(new KeyboardEvent('keyup',  { key: 'Enter', keyCode: 13, bubbles: true }));
   }
 
-  // Wait for form to close (input disappears) = task saved confirmation
   await waitForFormToClose(input);
 }
 
-async function waitForFormToClose(inputEl, timeout = 5000) {
+// MutationObserver-based form-close detection — reacts instantly instead of polling every 100ms
+function waitForFormToClose(inputEl, timeout = 3000) {
   return new Promise(resolve => {
-    const start = Date.now();
-    function check() {
-      if (!document.contains(inputEl) || !inputEl.offsetParent) { resolve(); return; }
-      if (Date.now() - start > timeout) { resolve(); return; }
-      setTimeout(check, 100);
-    }
-    setTimeout(check, 200);
+    if (!document.contains(inputEl) || !inputEl.offsetParent) { resolve(); return; }
+
+    const observer = new MutationObserver(() => {
+      if (!document.contains(inputEl) || !inputEl.offsetParent) {
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+    const timer = setTimeout(() => { observer.disconnect(); resolve(); }, timeout);
   });
 }
 
@@ -225,10 +221,10 @@ async function syncTasks(tasks) {
     const taskName = task.name.length > 100 ? task.name.slice(0, 97) + '…' : task.name;
 
     await addTask(taskName);
-    existing.add(normalized); // track within this run to avoid double-add
+    existing.add(normalized);
     added++;
 
-    await sleep(400); // gap between tasks
+    await sleep(50); // small gap so pomofocus can settle between tasks
   }
 
   return { added, skipped };
