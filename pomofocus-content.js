@@ -9,6 +9,12 @@
 // The "+ Create New" button in the header is for TEMPLATES — do not use it.
 // ────────────────────────────────────────────────────────────────────────────
 
+// ─── Session cache ─────────────────────────────────────────────────────────────
+// Tracks tasks added in this page session. Persists across multiple syncs without
+// a page reload. On reload the content script re-runs and the cache resets, but
+// at that point the DOM read works correctly from server-rendered data.
+const _sessionAdded = new Set();
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function normalizeTaskName(name) {
@@ -239,8 +245,11 @@ async function syncTasks(tasks) {
     );
   }
 
-  // Fetch both sets up front, then add only the difference.
+  // Build the existing set: DOM read + anything added earlier in this page session.
+  // The session cache handles the case where the user syncs twice without reloading —
+  // the DOM read may not reflect just-added tasks, but the cache always does.
   const existing = getExistingTaskNames();
+  for (const name of _sessionAdded) existing.add(name);
 
   const toAdd = tasks.filter(t => !existing.has(normalizeTaskName(t.name)));
   const skipped = tasks.length - toAdd.length;
@@ -248,6 +257,7 @@ async function syncTasks(tasks) {
   for (const task of toAdd) {
     const taskName = task.name.length > 100 ? task.name.slice(0, 97) + '…' : task.name;
     await addTask(taskName);
+    _sessionAdded.add(normalizeTaskName(task.name)); // remember for next sync
   }
 
   return { added: toAdd.length, skipped };
