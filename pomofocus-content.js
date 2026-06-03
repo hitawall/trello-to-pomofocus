@@ -99,22 +99,41 @@ function isLoggedIn() {
 function getExistingTaskNames() {
   const names = new Set();
 
-  // Find the Tasks section heading, then scope the search to that section's container
-  const tasksHeading = Array.from(document.querySelectorAll('span, h2, h3, div'))
-    .find(el => el.textContent?.trim() === 'Tasks' && el.offsetParent !== null);
-
-  const scope = tasksHeading?.closest('section, [class*="task"], div') || document.body;
-
-  // Collect text from <p> and <span> elements in the task list area
-  // Filter: text must be between 1 and 200 chars and not purely numeric
-  scope.querySelectorAll('p, span').forEach(el => {
-    // Skip elements that contain child elements (only leaf text nodes)
-    if (el.children.length > 0) return;
-    const text = el.textContent?.trim();
-    if (text && text.length > 0 && text.length < 200 && !/^\d+$/.test(text)) {
-      names.add(normalizeTaskName(text));
+  // Anchor on the "Add Task" leaf element — we know exactly how to find it in the DOM.
+  // The onclick parent is what findAddTaskElement() returns; its parent is the task list
+  // container. Every sibling of the onclick div that isn't itself is a task item.
+  let addTaskLeaf = null;
+  for (const el of document.querySelectorAll('*')) {
+    if (!el.offsetParent) continue;
+    if (el.children.length > 0) continue;
+    const text = (el.innerText ?? el.textContent)?.trim();
+    if (text === 'Add Task' && !el.closest('[role="dialog"]')) {
+      addTaskLeaf = el;
+      break;
     }
-  });
+  }
+
+  if (!addTaskLeaf) return names;
+
+  // addTaskLeaf → onclick div → task list container
+  const taskListContainer = addTaskLeaf.parentElement?.parentElement;
+  if (!taskListContainer) return names;
+
+  for (const child of taskListContainer.children) {
+    if (child.contains(addTaskLeaf)) continue; // skip the Add Task area itself
+    if (!child.offsetParent) continue;         // skip hidden items
+
+    // The first visible leaf text inside a task item is the task name
+    for (const el of child.querySelectorAll('*')) {
+      if (el.children.length > 0) continue;
+      if (!el.offsetParent) continue;
+      const text = (el.innerText ?? el.textContent)?.trim();
+      if (text && text.length > 0 && text.length < 200 && !/^\d+$/.test(text)) {
+        names.add(normalizeTaskName(text));
+        break; // one name per task item
+      }
+    }
+  }
 
   return names;
 }
