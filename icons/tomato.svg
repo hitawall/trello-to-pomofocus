@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <!-- Main tomato body gradient - bright front, darker edges -->
+    <radialGradient id="bodyGrad" cx="42%" cy="38%" r="58%">
+      <stop offset="0%"   stop-color="#FF6B4A"/>
+      <stop offset="45%"  stop-color="#E8341A"/>
+      <stop offset="100%" stop-color="#9B1A08"/>
+    </radialGradient>
+    <!-- Shine highlight -->
+    <radialGradient id="shineGrad" cx="35%" cy="28%" r="40%">
+      <stop offset="0%"  stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Stem gradient -->
+    <linearGradient id="stemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#5DB83A"/>
+      <stop offset="100%" stop-color="#2E6B1A"/>
+    </linearGradient>
+    <!-- Leaf gradient -->
+    <radialGradient id="leafGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#6DC943"/>
+      <stop offset="100%" stop-color="#2E7A18"/>
+    </radialGradient>
+    <!-- Drop shadow -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Drop shadow layer -->
+  <ellipse cx="64" cy="112" rx="38" ry="7" fill="#000" opacity="0.18"/>
+
+  <!-- Tomato body -->
+  <circle cx="64" cy="72" r="48" fill="url(#bodyGrad)" filter="url(#shadow)"/>
+
+  <!-- Subtle surface crease lines (like a real tomato) -->
+  <path d="M64 26 Q58 52 60 72 Q58 88 62 104" stroke="#C02A10" stroke-width="1.2" fill="none" opacity="0.35"/>
+  <path d="M64 26 Q70 52 68 72 Q70 88 66 104" stroke="#C02A10" stroke-width="1.2" fill="none" opacity="0.35"/>
+  <path d="M64 26 Q50 48 50 72 Q50 90 56 104" stroke="#C02A10" stroke-width="1.2" fill="none" opacity="0.25"/>
+  <path d="M64 26 Q78 48 78 72 Q78 90 72 104" stroke="#C02A10" stroke-width="1.2" fill="none" opacity="0.25"/>
+
+  <!-- Shine highlight -->
+  <ellipse cx="50" cy="50" rx="22" ry="16" fill="url(#shineGrad)" transform="rotate(-20 50 50)"/>
+
+  <!-- Sepals (green star leaves at top) -->
+  <!-- Center sepal up -->
+  <ellipse cx="64" cy="26" rx="5" ry="14" fill="url(#leafGrad)" transform="rotate(0 64 26)"/>
+  <!-- Sepal left -->
+  <ellipse cx="64" cy="26" rx="5" ry="14" fill="url(#leafGrad)" transform="rotate(72 64 26)"/>
+  <!-- Sepal right -->
+  <ellipse cx="64" cy="26" rx="5" ry="14" fill="url(#leafGrad)" transform="rotate(-72 64 26)"/>
+  <!-- Sepal far left -->
+  <ellipse cx="64" cy="26" rx="4" ry="12" fill="url(#leafGrad)" transform="rotate(144 64 26)"/>
+  <!-- Sepal far right -->
+  <ellipse cx="64" cy="26" rx="4" ry="12" fill="url(#leafGrad)" transform="rotate(-144 64 26)"/>
+
+  <!-- Stem -->
+  <rect x="61" y="10" width="6" height="18" rx="3" fill="url(#stemGrad)"/>
+  <!-- Stem curve -->
+  <path d="M64 12 Q72 6 76 2" stroke="#3A8020" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+</svg>
