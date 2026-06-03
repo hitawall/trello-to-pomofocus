@@ -122,10 +122,15 @@ function getExistingTaskNames() {
 // ─── Add a single task ─────────────────────────────────────────────────────────
 
 async function addTask(name) {
-  // Close any accidental modal without sleeping — if none is open this is instant
-  closeOpenModal();
+  let addBtn = findAddTaskElement() ?? findVisibleButtonByText('Add Task');
 
-  const addBtn = findAddTaskElement() ?? findVisibleButtonByText('Add Task');
+  if (!addBtn) {
+    // Add Task not visible — a modal may be blocking it. Close it and try once more.
+    closeOpenModal();
+    await sleep(100);
+    addBtn = findAddTaskElement() ?? findVisibleButtonByText('Add Task');
+  }
+
   if (!addBtn) {
     throw new Error(
       'Could not find the "+ Add Task" area. ' +
