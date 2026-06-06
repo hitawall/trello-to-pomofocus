@@ -147,6 +147,27 @@ body {
   cursor: not-allowed;
 }
 
+.btn-sync-state {
+  width: 100%;
+  padding: 10px;
+  margin-top: 8px;
+  background: white;
+  color: #555;
+  font-size: 13px;
+  border: 1px solid #d8d8d8;
+}
+
+.btn-sync-state:hover:not(:disabled) {
+  background: #f5f5f5;
+  border-color: #bbb;
+}
+
+.btn-sync-state:disabled {
+  color: #bbb;
+  border-color: #e8e8e8;
+  cursor: not-allowed;
+}
+
 /* Spinner */
 .spinner {
   width: 14px;
@@ -159,6 +180,11 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.spinner-dark {
+  border-color: rgba(0,0,0,0.15);
+  border-top-color: #555;
 }
 
 /* Status box */

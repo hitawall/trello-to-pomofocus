@@ -148,6 +148,46 @@ function getExistingTaskNames() {
   return names;
 }
 
+// ─── Read done (struck-through) tasks ─────────────────────────────────────────
+
+function getDoneTaskNames() {
+  const names = new Set();
+
+  // Anchor on the task list container the same way getExistingTaskNames() does.
+  let addTaskLeaf = null;
+  for (const el of document.querySelectorAll('*')) {
+    if (!el.offsetParent) continue;
+    if (el.children.length > 0) continue;
+    const text = (el.innerText ?? el.textContent)?.trim();
+    if (text === 'Add Task' && !el.closest('[role="dialog"]')) {
+      addTaskLeaf = el;
+      break;
+    }
+  }
+  if (!addTaskLeaf) return names;
+
+  const taskListContainer = addTaskLeaf.parentElement?.parentElement;
+  if (!taskListContainer) return names;
+
+  // Pomofocus marks completed tasks with CSS text-decoration: line-through.
+  // Walk every descendant and check computed style; collect the text of struck-through leaves.
+  for (const el of taskListContainer.querySelectorAll('*')) {
+    if (!el.offsetParent) continue;
+    const style = window.getComputedStyle(el);
+    const decoration = style.textDecorationLine || style.textDecoration || '';
+    if (!decoration.includes('line-through')) continue;
+
+    // Only collect leaf-ish text nodes (no nested struck-through children double-counting)
+    const text = (el.innerText ?? el.textContent)?.trim();
+    if (!text || text.length < 2 || text.length > 200) continue;
+
+    const cleaned = text.replace(/\s+\d+\s*\/\s*\d+\s*$/, '').trim();
+    if (cleaned.length > 1) names.add(normalizeTaskName(cleaned));
+  }
+
+  return names;
+}
+
 // ─── Add a single task ─────────────────────────────────────────────────────────
 
 async function addTask(name) {
@@ -271,6 +311,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(result => sendResponse({ success: true, ...result }))
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true;
+  }
+
+  if (message.action === 'GET_DONE_TASKS') {
+    try {
+      const doneNames = [...getDoneTaskNames()];
+      sendResponse({ success: true, doneNames });
+    } catch (err) {
+      sendResponse({ success: false, error: err.message });
+    }
   }
 });
 

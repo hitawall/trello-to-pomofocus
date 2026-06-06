@@ -3,10 +3,13 @@ const viewMain = document.getElementById('view-main');
 const displayBoard = document.getElementById('display-board');
 const displayLists = document.getElementById('display-lists');
 const btnSync = document.getElementById('btn-sync');
+const btnSyncState = document.getElementById('btn-sync-state');
 const btnOpenOptions = document.getElementById('btn-open-options');
 const linkSettings = document.getElementById('link-settings');
 const syncLabel = document.getElementById('sync-label');
 const syncSpinner = document.getElementById('sync-spinner');
+const syncStateLabel = document.getElementById('sync-state-label');
+const syncStateSpinner = document.getElementById('sync-state-spinner');
 const statusBox = document.getElementById('status-box');
 
 function showStatus(msg, type = 'info') {
@@ -22,8 +25,16 @@ function clearStatus() {
 
 function setSyncing(active) {
   btnSync.disabled = active;
+  btnSyncState.disabled = active;
   syncLabel.textContent = active ? 'Syncing…' : 'Sync to Pomofocus';
   syncSpinner.classList.toggle('hidden', !active);
+}
+
+function setSyncingState(active) {
+  btnSyncState.disabled = active;
+  btnSync.disabled = active;
+  syncStateLabel.textContent = active ? 'Syncing State…' : 'Sync State to Trello';
+  syncStateSpinner.classList.toggle('hidden', !active);
 }
 
 function openOptions() {
@@ -116,6 +127,19 @@ btnSync.addEventListener('click', async () => {
       return;
     }
 
+    // Persist name→id map so "Sync State" can look up card IDs by normalised name.
+    const trelloCardMap = {};
+    for (const card of cards) {
+      const normalized = card.name.trim().toLowerCase().replace(/\s+/g, ' ');
+      // Use the same truncation applied when adding to Pomofocus (100 char limit).
+      const displayName = card.name.length > 100 ? card.name.slice(0, 97) + '…' : card.name;
+      const displayNormalized = displayName.trim().toLowerCase().replace(/\s+/g, ' ');
+      trelloCardMap[displayNormalized] = card.id;
+      // Also store under the original name so direct matches work even without truncation.
+      trelloCardMap[normalized] = card.id;
+    }
+    await chrome.storage.local.set({ trelloCardMap });
+
     const { added, skipped } = syncResult;
     const parts = [];
     if (added > 0) parts.push(`${added} task${added !== 1 ? 's' : ''} added`);
@@ -127,6 +151,107 @@ btnSync.addEventListener('click', async () => {
     showStatus(`Unexpected error: ${err.message}`, 'error');
   } finally {
     setSyncing(false);
+  }
+});
+
+btnSyncState.addEventListener('click', async () => {
+  clearStatus();
+  setSyncingState(true);
+
+  try {
+    const [local, sync] = await Promise.all([
+      chrome.storage.local.get(['trelloCardMap']),
+      chrome.storage.sync.get(['apiKey', 'token', 'boardId', 'includeLists']),
+    ]);
+    let { trelloCardMap } = local;
+    const { apiKey, token, boardId, includeLists } = sync;
+
+    if (!apiKey || !token) {
+      showStatus('Missing Trello credentials. Open Settings.', 'error');
+      return;
+    }
+
+    // Build the card map on-the-fly if it hasn't been populated by a forward sync yet.
+    if (!trelloCardMap || Object.keys(trelloCardMap).length === 0) {
+      const listNames = (includeLists || 'To Do,In Progress')
+        .split(',').map(s => s.trim()).filter(Boolean);
+      const fetchResult = await chrome.runtime.sendMessage({
+        action: 'FETCH_CARDS', apiKey, token, boardId, includeLists: listNames,
+      });
+      if (!fetchResult.success) {
+        showStatus(`Could not fetch Trello cards: ${fetchResult.error}`, 'error');
+        return;
+      }
+      trelloCardMap = {};
+      for (const card of fetchResult.cards) {
+        const normalized = card.name.trim().toLowerCase().replace(/\s+/g, ' ');
+        const displayName = card.name.length > 100 ? card.name.slice(0, 97) + '…' : card.name;
+        const displayNormalized = displayName.trim().toLowerCase().replace(/\s+/g, ' ');
+        trelloCardMap[displayNormalized] = card.id;
+        trelloCardMap[normalized] = card.id;
+      }
+      await chrome.storage.local.set({ trelloCardMap });
+    }
+
+    // Get done tasks from the Pomofocus tab.
+    const tabs = await chrome.tabs.query({ url: '*://pomofocus.io/*' });
+    if (tabs.length === 0) {
+      showStatus('Please open pomofocus.io in a tab first.', 'error');
+      return;
+    }
+
+    let doneResult;
+    try {
+      doneResult = await chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_DONE_TASKS' });
+    } catch {
+      showStatus('Could not reach pomofocus.io. Please refresh that tab and try again.', 'error');
+      return;
+    }
+
+    if (!doneResult?.success) {
+      showStatus(doneResult?.error || 'Could not read done tasks from pomofocus.io.', 'error');
+      return;
+    }
+
+    const { doneNames } = doneResult;
+    if (doneNames.length === 0) {
+      showStatus('No completed tasks found in Pomofocus.', 'info');
+      return;
+    }
+
+    // Match done task names to Trello card IDs.
+    const cardIds = [...new Set(
+      doneNames
+        .map(name => trelloCardMap[name])
+        .filter(Boolean)
+    )];
+
+    if (cardIds.length === 0) {
+      showStatus(`${doneNames.length} done task${doneNames.length !== 1 ? 's' : ''} found but none matched Trello cards. Try syncing to Pomofocus first.`, 'info');
+      return;
+    }
+
+    const markResult = await chrome.runtime.sendMessage({
+      action: 'MARK_CARDS_DONE',
+      apiKey,
+      token,
+      cardIds,
+    });
+
+    if (!markResult.success) {
+      showStatus(`Trello error: ${markResult.error}`, 'error');
+      return;
+    }
+
+    const { succeeded, failed, errors } = markResult;
+    const parts = [];
+    if (succeeded > 0) parts.push(`${succeeded} card${succeeded !== 1 ? 's' : ''} marked done`);
+    if (failed > 0) parts.push(`${failed} failed — ${errors[0]}`);
+    showStatus(parts.join(' · '), succeeded > 0 && failed === 0 ? 'success' : failed > 0 && succeeded === 0 ? 'error' : 'info');
+  } catch (err) {
+    showStatus(`Unexpected error: ${err.message}`, 'error');
+  } finally {
+    setSyncingState(false);
   }
 });
 

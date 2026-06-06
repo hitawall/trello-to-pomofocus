@@ -57,7 +57,7 @@ btnAuthorize.addEventListener('click', () => {
   const authUrl =
     `https://trello.com/1/authorize` +
     `?expiration=never` +
-    `&scope=read` +
+    `&scope=read,write` +
     `&response_type=token` +
     `&name=TrelloPomofocus` +
     `&key=${encodeURIComponent(apiKey)}`;
