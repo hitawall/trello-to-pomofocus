@@ -1,0 +1,38 @@
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# Dependencies
+node_modules/
+vendor/
+.venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.egg-info/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & coverage
+*.log
+coverage/
+.nyc_output/
+
+# Temp
+*.tmp
+*.bak
