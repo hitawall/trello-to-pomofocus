@@ -6,6 +6,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'FETCH_ALL_CARDS') {
+    fetchTrelloCards(message.apiKey, message.token, message.boardId, message.includeLists, { includeDone: true })
+      .then(cards => sendResponse({ success: true, cards }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
   if (message.action === 'MARK_CARDS_DONE') {
     markCardsDone(message.apiKey, message.token, message.cardIds)
       .then(result => sendResponse({ success: true, ...result }))
@@ -14,7 +21,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function fetchTrelloCards(apiKey, token, boardId, includeLists) {
+async function fetchTrelloCards(apiKey, token, boardId, includeLists, { includeDone = false } = {}) {
   const auth = `key=${encodeURIComponent(apiKey)}&token=${encodeURIComponent(token)}`;
 
   // Fetch all open lists on the board
@@ -55,11 +62,12 @@ async function fetchTrelloCards(apiKey, token, boardId, includeLists) {
 
   return cardArrays
     .flat()
-    .filter(card => !card.dueComplete)   // exclude cards marked complete via due-date checkbox
+    .filter(card => includeDone || !card.dueComplete)
     .map(card => ({
       id: card.id,
       name: card.name.trim(),
       desc: (card.desc || '').trim(),
+      dueComplete: !!card.dueComplete,
     }))
     .filter(card => card.name.length > 0);
 }

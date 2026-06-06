@@ -188,6 +188,55 @@ function getDoneTaskNames() {
   return names;
 }
 
+// ─── Mark specific tasks as done ──────────────────────────────────────────────
+
+async function markTasksDone(names) {
+  const targets = new Set(names.map(normalizeTaskName));
+  let marked = 0;
+
+  let addTaskLeaf = null;
+  for (const el of document.querySelectorAll('*')) {
+    if (!el.offsetParent) continue;
+    if (el.children.length > 0) continue;
+    const text = (el.innerText ?? el.textContent)?.trim();
+    if (text === 'Add Task' && !el.closest('[role="dialog"]')) {
+      addTaskLeaf = el;
+      break;
+    }
+  }
+  if (!addTaskLeaf) return { marked };
+
+  const taskListContainer = addTaskLeaf.parentElement?.parentElement;
+  if (!taskListContainer) return { marked };
+
+  for (const item of taskListContainer.children) {
+    if (!item.offsetParent) continue;
+
+    const rawText = (item.innerText ?? item.textContent) || '';
+    const firstLine = rawText.trim().split('\n')[0].trim();
+    const cleaned = firstLine.replace(/\s+\d+\s*\/\s*\d+\s*$/, '').trim();
+    if (!targets.has(normalizeTaskName(cleaned))) continue;
+
+    // Skip if already struck through (already done).
+    const alreadyDone = [...item.querySelectorAll('*')].some(el => {
+      if (!el.offsetParent) return false;
+      const dec = window.getComputedStyle(el).textDecorationLine || '';
+      return dec.includes('line-through');
+    });
+    if (alreadyDone) continue;
+
+    // The done/check button is the first button in the task item.
+    const btn = item.querySelector('button, [role="button"]');
+    if (btn?.offsetParent) {
+      btn.click();
+      marked++;
+      await sleep(300);
+    }
+  }
+
+  return { marked };
+}
+
 // ─── Add a single task ─────────────────────────────────────────────────────────
 
 async function addTask(name) {
@@ -320,6 +369,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } catch (err) {
       sendResponse({ success: false, error: err.message });
     }
+  }
+
+  if (message.action === 'MARK_TASKS_DONE') {
+    markTasksDone(message.names)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
   }
 });
 
