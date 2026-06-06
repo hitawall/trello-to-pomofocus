@@ -227,6 +227,7 @@ btnSyncState.addEventListener('click', async () => {
     const [cards, doneResult] = await Promise.all([
       fetchTrelloCards(apiKey, token, boardId, listNames, { includeDone: true }),
       chrome.tabs.sendMessage(pomofocusTab.id, { action: 'GET_DONE_TASKS' })
+        .then(r => r ?? { success: false, doneNames: [] })
         .catch(() => ({ success: false, doneNames: [] })),
     ]);
 
@@ -250,6 +251,7 @@ btnSyncState.addEventListener('click', async () => {
         : { succeeded: 0, failed: 0, errors: [] },
       toMarkInPomofocus.length > 0
         ? chrome.tabs.sendMessage(pomofocusTab.id, { action: 'MARK_TASKS_DONE', names: toMarkInPomofocus })
+            .then(r => r ?? { success: true, marked: 0 })
             .catch(err => ({ success: false, error: err.message }))
         : { success: true, marked: 0 },
     ]);
