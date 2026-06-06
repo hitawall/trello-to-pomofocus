@@ -67,15 +67,24 @@ async function fetchTrelloCards(apiKey, token, boardId, includeLists) {
 async function markCardsDone(apiKey, token, cardIds) {
   const auth = `key=${encodeURIComponent(apiKey)}&token=${encodeURIComponent(token)}`;
   const results = await Promise.allSettled(
-    cardIds.map(id =>
-      fetch(`https://api.trello.com/1/cards/${id}?${auth}&dueComplete=true`, { method: 'PUT' })
-        .then(r => {
-          if (!r.ok) throw new Error(`Trello API error ${r.status} for card ${id}`);
-        })
-    )
+    cardIds.map(async id => {
+      const r = await fetch(`https://api.trello.com/1/cards/${id}?${auth}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueComplete: true }),
+      });
+      if (!r.ok) {
+        const body = await r.text().catch(() => '');
+        throw new Error(`HTTP ${r.status} for card ${id}: ${body.slice(0, 120)}`);
+      }
+    })
   );
+  const errors = results
+    .filter(r => r.status === 'rejected')
+    .map(r => r.reason?.message || 'unknown error');
   return {
     succeeded: results.filter(r => r.status === 'fulfilled').length,
-    failed: results.filter(r => r.status === 'rejected').length,
+    failed: errors.length,
+    errors,
   };
 }

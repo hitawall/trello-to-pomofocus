@@ -159,17 +159,38 @@ btnSyncState.addEventListener('click', async () => {
   setSyncingState(true);
 
   try {
-    const { apiKey, token, trelloCardMap } = await chrome.storage.local.get(['trelloCardMap'])
-      .then(local => chrome.storage.sync.get(['apiKey', 'token']).then(sync => ({ ...sync, ...local })));
+    const [local, sync] = await Promise.all([
+      chrome.storage.local.get(['trelloCardMap']),
+      chrome.storage.sync.get(['apiKey', 'token', 'boardId', 'includeLists']),
+    ]);
+    let { trelloCardMap } = local;
+    const { apiKey, token, boardId, includeLists } = sync;
 
     if (!apiKey || !token) {
       showStatus('Missing Trello credentials. Open Settings.', 'error');
       return;
     }
 
+    // Build the card map on-the-fly if it hasn't been populated by a forward sync yet.
     if (!trelloCardMap || Object.keys(trelloCardMap).length === 0) {
-      showStatus('No card map found. Run "Sync to Pomofocus" first.', 'info');
-      return;
+      const listNames = (includeLists || 'To Do,In Progress')
+        .split(',').map(s => s.trim()).filter(Boolean);
+      const fetchResult = await chrome.runtime.sendMessage({
+        action: 'FETCH_CARDS', apiKey, token, boardId, includeLists: listNames,
+      });
+      if (!fetchResult.success) {
+        showStatus(`Could not fetch Trello cards: ${fetchResult.error}`, 'error');
+        return;
+      }
+      trelloCardMap = {};
+      for (const card of fetchResult.cards) {
+        const normalized = card.name.trim().toLowerCase().replace(/\s+/g, ' ');
+        const displayName = card.name.length > 100 ? card.name.slice(0, 97) + '…' : card.name;
+        const displayNormalized = displayName.trim().toLowerCase().replace(/\s+/g, ' ');
+        trelloCardMap[displayNormalized] = card.id;
+        trelloCardMap[normalized] = card.id;
+      }
+      await chrome.storage.local.set({ trelloCardMap });
     }
 
     // Get done tasks from the Pomofocus tab.
@@ -222,11 +243,11 @@ btnSyncState.addEventListener('click', async () => {
       return;
     }
 
-    const { succeeded, failed } = markResult;
+    const { succeeded, failed, errors } = markResult;
     const parts = [];
     if (succeeded > 0) parts.push(`${succeeded} card${succeeded !== 1 ? 's' : ''} marked done`);
-    if (failed > 0) parts.push(`${failed} failed`);
-    showStatus(parts.join(' · '), succeeded > 0 ? 'success' : 'error');
+    if (failed > 0) parts.push(`${failed} failed — ${errors[0]}`);
+    showStatus(parts.join(' · '), succeeded > 0 && failed === 0 ? 'success' : failed > 0 && succeeded === 0 ? 'error' : 'info');
   } catch (err) {
     showStatus(`Unexpected error: ${err.message}`, 'error');
   } finally {
