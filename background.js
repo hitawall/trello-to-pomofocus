@@ -3,7 +3,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     fetchTrelloCards(message.apiKey, message.token, message.boardId, message.includeLists)
       .then(cards => sendResponse({ success: true, cards }))
       .catch(err => sendResponse({ success: false, error: err.message }));
-    return true; // keep message channel open for async response
+    return true;
+  }
+
+  if (message.action === 'MARK_CARDS_DONE') {
+    markCardsDone(message.apiKey, message.token, message.cardIds)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
   }
 });
 
@@ -50,8 +57,25 @@ async function fetchTrelloCards(apiKey, token, boardId, includeLists) {
     .flat()
     .filter(card => !card.dueComplete)   // exclude cards marked complete via due-date checkbox
     .map(card => ({
+      id: card.id,
       name: card.name.trim(),
       desc: (card.desc || '').trim(),
     }))
     .filter(card => card.name.length > 0);
+}
+
+async function markCardsDone(apiKey, token, cardIds) {
+  const auth = `key=${encodeURIComponent(apiKey)}&token=${encodeURIComponent(token)}`;
+  const results = await Promise.allSettled(
+    cardIds.map(id =>
+      fetch(`https://api.trello.com/1/cards/${id}?${auth}&dueComplete=true`, { method: 'PUT' })
+        .then(r => {
+          if (!r.ok) throw new Error(`Trello API error ${r.status} for card ${id}`);
+        })
+    )
+  );
+  return {
+    succeeded: results.filter(r => r.status === 'fulfilled').length,
+    failed: results.filter(r => r.status === 'rejected').length,
+  };
 }
