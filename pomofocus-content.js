@@ -188,6 +188,74 @@ function getDoneTaskNames() {
   return names;
 }
 
+// ─── Mark specific tasks as done ──────────────────────────────────────────────
+
+async function markTasksDone(names) {
+  const targets = new Set(names.map(normalizeTaskName));
+  let marked = 0;
+
+  let addTaskLeaf = null;
+  for (const el of document.querySelectorAll('*')) {
+    if (!el.offsetParent) continue;
+    if (el.children.length > 0) continue;
+    const text = (el.innerText ?? el.textContent)?.trim();
+    if (text === 'Add Task' && !el.closest('[role="dialog"]')) {
+      addTaskLeaf = el;
+      break;
+    }
+  }
+  if (!addTaskLeaf) return { marked };
+
+  const taskListContainer = addTaskLeaf.parentElement?.parentElement;
+  if (!taskListContainer) return { marked };
+
+  // Track which task-item containers we've already clicked to avoid duplicates.
+  const clicked = new Set();
+
+  // Scan every visible leaf inside the task list container.
+  // For each one whose text matches a target, walk up to the nearest ancestor
+  // that actually contains buttons — that's the task-item wrapper regardless
+  // of how deep React nests it.
+  for (const leaf of taskListContainer.querySelectorAll('*')) {
+    if (!leaf.offsetParent || leaf.children.length > 0) continue;
+
+    const text = (leaf.innerText ?? leaf.textContent)?.trim() || '';
+    const cleaned = text.replace(/\s+\d+\s*\/\s*\d+\s*$/, '').trim();
+    if (cleaned.length < 2 || !targets.has(normalizeTaskName(cleaned))) continue;
+
+    // Walk up to find the task-item wrapper (nearest ancestor with buttons).
+    let taskItem = leaf.parentElement;
+    while (taskItem && taskItem !== taskListContainer) {
+      if (taskItem.querySelectorAll('button, [role="button"]').length > 0) break;
+      taskItem = taskItem.parentElement;
+    }
+    if (!taskItem || taskItem === taskListContainer || clicked.has(taskItem)) continue;
+
+    // Skip if already struck through.
+    const alreadyDone = [...taskItem.querySelectorAll('*')].some(el => {
+      if (!el.offsetParent) return false;
+      return (window.getComputedStyle(el).textDecorationLine || '').includes('line-through');
+    });
+    if (alreadyDone) continue;
+
+    // The done circle is the leftmost visible button in the task item.
+    const buttons = [...taskItem.querySelectorAll('button, [role="button"]')]
+      .filter(btn => btn.offsetParent !== null);
+    if (buttons.length === 0) continue;
+
+    const doneBtn = buttons.reduce((a, b) =>
+      a.getBoundingClientRect().left <= b.getBoundingClientRect().left ? a : b
+    );
+
+    clicked.add(taskItem);
+    doneBtn.click();
+    marked++;
+    await sleep(300);
+  }
+
+  return { marked };
+}
+
 // ─── Add a single task ─────────────────────────────────────────────────────────
 
 async function addTask(name) {
@@ -320,6 +388,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } catch (err) {
       sendResponse({ success: false, error: err.message });
     }
+  }
+
+  if (message.action === 'MARK_TASKS_DONE') {
+    markTasksDone(message.names)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
   }
 });
 

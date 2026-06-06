@@ -23,17 +23,20 @@ function clearStatus() {
   statusBox.className = 'status-box hidden';
 }
 
-function setSyncing(active) {
+function setBothDisabled(active) {
   btnSync.disabled = active;
   btnSyncState.disabled = active;
+}
+
+function setSyncing(active) {
+  setBothDisabled(active);
   syncLabel.textContent = active ? 'Syncing…' : 'Sync to Pomofocus';
   syncSpinner.classList.toggle('hidden', !active);
 }
 
 function setSyncingState(active) {
-  btnSyncState.disabled = active;
-  btnSync.disabled = active;
-  syncStateLabel.textContent = active ? 'Syncing State…' : 'Sync State to Trello';
+  setBothDisabled(active);
+  syncStateLabel.textContent = active ? 'Syncing…' : 'Sync State';
   syncStateSpinner.classList.toggle('hidden', !active);
 }
 
@@ -59,12 +62,87 @@ async function init() {
   viewMain.classList.remove('hidden');
 }
 
+// ── Trello API (called directly — popup has host_permissions for api.trello.com) ──
+
+async function fetchTrelloCards(apiKey, token, boardId, includeLists, { includeDone = false } = {}) {
+  const auth = `key=${encodeURIComponent(apiKey)}&token=${encodeURIComponent(token)}`;
+
+  const listsRes = await fetch(
+    `https://api.trello.com/1/boards/${boardId}/lists?${auth}&filter=open&fields=id,name`
+  );
+  if (!listsRes.ok) {
+    const body = await listsRes.text().catch(() => '');
+    throw new Error(`Trello lists API error ${listsRes.status}: ${body.slice(0, 100)}`);
+  }
+  const lists = await listsRes.json();
+
+  const includeSet = new Set(includeLists.map(n => n.toLowerCase().trim()));
+  const targetLists = lists.filter(l => includeSet.has(l.name.toLowerCase().trim()));
+
+  if (targetLists.length === 0) {
+    const available = lists.map(l => `"${l.name}"`).join(', ');
+    throw new Error(
+      `No lists matched [${includeLists.map(n => `"${n}"`).join(', ')}]. ` +
+      `Available lists: ${available || 'none'}`
+    );
+  }
+
+  const cardArrays = await Promise.all(
+    targetLists.map(list =>
+      fetch(
+        `https://api.trello.com/1/lists/${list.id}/cards` +
+        `?${auth}&filter=open&fields=name,desc,due,dueComplete`
+      ).then(r => {
+        if (!r.ok) throw new Error(`Cards API error ${r.status} for list "${list.name}"`);
+        return r.json();
+      })
+    )
+  );
+
+  return cardArrays
+    .flat()
+    .filter(card => includeDone || !card.dueComplete)
+    .map(card => ({
+      id: card.id,
+      name: card.name.trim(),
+      desc: (card.desc || '').trim(),
+      dueComplete: !!card.dueComplete,
+    }))
+    .filter(card => card.name.length > 0);
+}
+
+async function markCardsDone(apiKey, token, cardIds) {
+  const auth = `key=${encodeURIComponent(apiKey)}&token=${encodeURIComponent(token)}`;
+  const results = await Promise.allSettled(
+    cardIds.map(async id => {
+      const r = await fetch(`https://api.trello.com/1/cards/${id}?${auth}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueComplete: true }),
+      });
+      if (!r.ok) {
+        const body = await r.text().catch(() => '');
+        throw new Error(`HTTP ${r.status} for card ${id}: ${body.slice(0, 120)}`);
+      }
+    })
+  );
+  const errors = results
+    .filter(r => r.status === 'rejected')
+    .map(r => r.reason?.message || 'unknown error');
+  return {
+    succeeded: results.filter(r => r.status === 'fulfilled').length,
+    failed: errors.length,
+    errors,
+  };
+}
+
+// ── Sync to Pomofocus (forward sync) ──────────────────────────────────────────
+
 btnSync.addEventListener('click', async () => {
   clearStatus();
   setSyncing(true);
 
   try {
-    // 1. Load config
     const { apiKey, token, boardId, includeLists } = await chrome.storage.sync.get([
       'apiKey', 'token', 'boardId', 'includeLists',
     ]);
@@ -74,71 +152,36 @@ btnSync.addEventListener('click', async () => {
       return;
     }
 
-    // 2. Fetch cards from Trello (via background service worker)
     const listNames = (includeLists || 'To Do,In Progress')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
+      .split(',').map(s => s.trim()).filter(Boolean);
 
-    const fetchResult = await chrome.runtime.sendMessage({
-      action: 'FETCH_CARDS',
-      apiKey,
-      token,
-      boardId,
-      includeLists: listNames,
-    });
-
-    if (!fetchResult.success) {
-      showStatus(`Trello error: ${fetchResult.error}`, 'error');
-      return;
-    }
-
-    const { cards } = fetchResult;
+    const cards = await fetchTrelloCards(apiKey, token, boardId, listNames);
 
     if (cards.length === 0) {
       showStatus('No cards found in the configured lists.', 'info');
       return;
     }
 
-    // 3. Find pomofocus.io tab
     const tabs = await chrome.tabs.query({ url: '*://pomofocus.io/*' });
-
     if (tabs.length === 0) {
       showStatus('Please open pomofocus.io in a tab first.', 'error');
       return;
     }
 
-    const pomofocusTab = tabs[0];
-
-    // 4. Send tasks to content script
     let syncResult;
     try {
-      syncResult = await chrome.tabs.sendMessage(pomofocusTab.id, {
-        action: 'SYNC_TASKS',
-        tasks: cards,
-      });
-    } catch (err) {
+      syncResult = await chrome.tabs.sendMessage(tabs[0].id, { action: 'SYNC_TASKS', tasks: cards });
+    } catch {
       showStatus('Could not reach pomofocus.io. Please refresh that tab and try again.', 'error');
       return;
     }
 
-    if (!syncResult || !syncResult.success) {
+    if (!syncResult?.success) {
       showStatus(syncResult?.error || 'Sync failed. Check pomofocus.io console for details.', 'error');
       return;
     }
 
-    // Persist name→id map so "Sync State" can look up card IDs by normalised name.
-    const trelloCardMap = {};
-    for (const card of cards) {
-      const normalized = card.name.trim().toLowerCase().replace(/\s+/g, ' ');
-      // Use the same truncation applied when adding to Pomofocus (100 char limit).
-      const displayName = card.name.length > 100 ? card.name.slice(0, 97) + '…' : card.name;
-      const displayNormalized = displayName.trim().toLowerCase().replace(/\s+/g, ' ');
-      trelloCardMap[displayNormalized] = card.id;
-      // Also store under the original name so direct matches work even without truncation.
-      trelloCardMap[normalized] = card.id;
-    }
-    await chrome.storage.local.set({ trelloCardMap });
+    await chrome.storage.local.set({ trelloCardMap: buildCardMap(cards) });
 
     const { added, skipped } = syncResult;
     const parts = [];
@@ -148,111 +191,107 @@ btnSync.addEventListener('click', async () => {
 
     showStatus(parts.join(' · '), 'success');
   } catch (err) {
-    showStatus(`Unexpected error: ${err.message}`, 'error');
+    showStatus(`Error: ${err.message}`, 'error');
   } finally {
     setSyncing(false);
   }
 });
+
+// ── Sync State (bidirectional — Trello done ↔ Pomofocus done) ─────────────────
 
 btnSyncState.addEventListener('click', async () => {
   clearStatus();
   setSyncingState(true);
 
   try {
-    const [local, sync] = await Promise.all([
-      chrome.storage.local.get(['trelloCardMap']),
-      chrome.storage.sync.get(['apiKey', 'token', 'boardId', 'includeLists']),
+    const { apiKey, token, boardId, includeLists } = await chrome.storage.sync.get([
+      'apiKey', 'token', 'boardId', 'includeLists',
     ]);
-    let { trelloCardMap } = local;
-    const { apiKey, token, boardId, includeLists } = sync;
 
-    if (!apiKey || !token) {
+    if (!apiKey || !token || !boardId) {
       showStatus('Missing Trello credentials. Open Settings.', 'error');
       return;
     }
 
-    // Build the card map on-the-fly if it hasn't been populated by a forward sync yet.
-    if (!trelloCardMap || Object.keys(trelloCardMap).length === 0) {
-      const listNames = (includeLists || 'To Do,In Progress')
-        .split(',').map(s => s.trim()).filter(Boolean);
-      const fetchResult = await chrome.runtime.sendMessage({
-        action: 'FETCH_CARDS', apiKey, token, boardId, includeLists: listNames,
-      });
-      if (!fetchResult.success) {
-        showStatus(`Could not fetch Trello cards: ${fetchResult.error}`, 'error');
-        return;
-      }
-      trelloCardMap = {};
-      for (const card of fetchResult.cards) {
-        const normalized = card.name.trim().toLowerCase().replace(/\s+/g, ' ');
-        const displayName = card.name.length > 100 ? card.name.slice(0, 97) + '…' : card.name;
-        const displayNormalized = displayName.trim().toLowerCase().replace(/\s+/g, ' ');
-        trelloCardMap[displayNormalized] = card.id;
-        trelloCardMap[normalized] = card.id;
-      }
-      await chrome.storage.local.set({ trelloCardMap });
-    }
-
-    // Get done tasks from the Pomofocus tab.
     const tabs = await chrome.tabs.query({ url: '*://pomofocus.io/*' });
     if (tabs.length === 0) {
       showStatus('Please open pomofocus.io in a tab first.', 'error');
       return;
     }
+    const pomofocusTab = tabs[0];
 
-    let doneResult;
-    try {
-      doneResult = await chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_DONE_TASKS' });
-    } catch {
-      showStatus('Could not reach pomofocus.io. Please refresh that tab and try again.', 'error');
+    const listNames = (includeLists || 'To Do,In Progress')
+      .split(',').map(s => s.trim()).filter(Boolean);
+
+    // Fetch all cards (done + not done) and read Pomofocus done-tasks in parallel.
+    const [cards, doneResult] = await Promise.all([
+      fetchTrelloCards(apiKey, token, boardId, listNames, { includeDone: true }),
+      chrome.tabs.sendMessage(pomofocusTab.id, { action: 'GET_DONE_TASKS' })
+        .then(r => r ?? { success: false, doneNames: [] })
+        .catch(() => ({ success: false, doneNames: [] })),
+    ]);
+
+    await chrome.storage.local.set({ trelloCardMap: buildCardMap(cards.filter(c => !c.dueComplete)) });
+
+    const trelloDoneNames = new Set(cards.filter(c => c.dueComplete).map(c => normalizeCardName(c.name)));
+    const pomofocusDoneNames = new Set(doneResult.success ? doneResult.doneNames : []);
+
+    const nameToId = Object.fromEntries(cards.map(c => [normalizeCardName(c.name), c.id]));
+    const toMarkInTrello    = [...pomofocusDoneNames].filter(n => !trelloDoneNames.has(n) && nameToId[n]);
+    const toMarkInPomofocus = [...trelloDoneNames].filter(n => !pomofocusDoneNames.has(n));
+
+    if (toMarkInTrello.length === 0 && toMarkInPomofocus.length === 0) {
+      showStatus('States are already in sync.', 'success');
       return;
     }
 
-    if (!doneResult?.success) {
-      showStatus(doneResult?.error || 'Could not read done tasks from pomofocus.io.', 'error');
-      return;
-    }
+    const [markTrelloResult, markPomofocusResult] = await Promise.all([
+      toMarkInTrello.length > 0
+        ? markCardsDone(apiKey, token, toMarkInTrello.map(n => nameToId[n]))
+        : { succeeded: 0, failed: 0, errors: [] },
+      toMarkInPomofocus.length > 0
+        ? chrome.tabs.sendMessage(pomofocusTab.id, { action: 'MARK_TASKS_DONE', names: toMarkInPomofocus })
+            .then(r => r ?? { success: false, marked: 0, error: 'No response from Pomofocus — try refreshing that tab' })
+            .catch(err => ({ success: false, marked: 0, error: err.message }))
+        : { success: true, marked: 0 },
+    ]);
 
-    const { doneNames } = doneResult;
-    if (doneNames.length === 0) {
-      showStatus('No completed tasks found in Pomofocus.', 'info');
-      return;
-    }
-
-    // Match done task names to Trello card IDs.
-    const cardIds = [...new Set(
-      doneNames
-        .map(name => trelloCardMap[name])
-        .filter(Boolean)
-    )];
-
-    if (cardIds.length === 0) {
-      showStatus(`${doneNames.length} done task${doneNames.length !== 1 ? 's' : ''} found but none matched Trello cards. Try syncing to Pomofocus first.`, 'info');
-      return;
-    }
-
-    const markResult = await chrome.runtime.sendMessage({
-      action: 'MARK_CARDS_DONE',
-      apiKey,
-      token,
-      cardIds,
-    });
-
-    if (!markResult.success) {
-      showStatus(`Trello error: ${markResult.error}`, 'error');
-      return;
-    }
-
-    const { succeeded, failed, errors } = markResult;
     const parts = [];
-    if (succeeded > 0) parts.push(`${succeeded} card${succeeded !== 1 ? 's' : ''} marked done`);
-    if (failed > 0) parts.push(`${failed} failed — ${errors[0]}`);
-    showStatus(parts.join(' · '), succeeded > 0 && failed === 0 ? 'success' : failed > 0 && succeeded === 0 ? 'error' : 'info');
+    if (markTrelloResult.succeeded > 0)
+      parts.push(`${markTrelloResult.succeeded} marked done in Trello`);
+    if (markTrelloResult.failed > 0)
+      parts.push(`${markTrelloResult.failed} Trello failed — ${markTrelloResult.errors[0]}`);
+    if (markPomofocusResult.marked > 0)
+      parts.push(`${markPomofocusResult.marked} marked done in Pomofocus`);
+    if (!markPomofocusResult.success)
+      parts.push(`Pomofocus error: ${markPomofocusResult.error}`);
+
+    if (parts.length === 0) parts.push('States are already in sync.');
+
+    const hasError = markTrelloResult.failed > 0 || !markPomofocusResult.success;
+    showStatus(parts.join(' · '), hasError ? 'error' : 'success');
   } catch (err) {
-    showStatus(`Unexpected error: ${err.message}`, 'error');
+    showStatus(`Error: ${err.message}`, 'error');
   } finally {
     setSyncingState(false);
   }
 });
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function normalizeCardName(name) {
+  const display = name.length > 100 ? name.slice(0, 97) + '…' : name;
+  return display.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function buildCardMap(cards) {
+  const map = {};
+  for (const card of cards) {
+    map[normalizeCardName(card.name)] = card.id;
+    const orig = card.name.trim().toLowerCase().replace(/\s+/g, ' ');
+    map[orig] = card.id;
+  }
+  return map;
+}
 
 init();

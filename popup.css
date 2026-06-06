@@ -168,6 +168,11 @@ body {
   cursor: not-allowed;
 }
 
+.spinner-dark {
+  border-color: rgba(0,0,0,0.15);
+  border-top-color: #555;
+}
+
 /* Spinner */
 .spinner {
   width: 14px;
@@ -180,11 +185,6 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-.spinner-dark {
-  border-color: rgba(0,0,0,0.15);
-  border-top-color: #555;
 }
 
 /* Status box */
