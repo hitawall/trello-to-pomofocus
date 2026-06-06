@@ -251,8 +251,8 @@ btnSyncState.addEventListener('click', async () => {
         : { succeeded: 0, failed: 0, errors: [] },
       toMarkInPomofocus.length > 0
         ? chrome.tabs.sendMessage(pomofocusTab.id, { action: 'MARK_TASKS_DONE', names: toMarkInPomofocus })
-            .then(r => r ?? { success: true, marked: 0 })
-            .catch(err => ({ success: false, error: err.message }))
+            .then(r => r ?? { success: false, marked: 0, error: 'No response from Pomofocus — try refreshing that tab' })
+            .catch(err => ({ success: false, marked: 0, error: err.message }))
         : { success: true, marked: 0 },
     ]);
 
@@ -265,6 +265,8 @@ btnSyncState.addEventListener('click', async () => {
       parts.push(`${markPomofocusResult.marked} marked done in Pomofocus`);
     if (!markPomofocusResult.success)
       parts.push(`Pomofocus error: ${markPomofocusResult.error}`);
+
+    if (parts.length === 0) parts.push('States are already in sync.');
 
     const hasError = markTrelloResult.failed > 0 || !markPomofocusResult.success;
     showStatus(parts.join(' · '), hasError ? 'error' : 'success');

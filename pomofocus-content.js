@@ -209,29 +209,48 @@ async function markTasksDone(names) {
   const taskListContainer = addTaskLeaf.parentElement?.parentElement;
   if (!taskListContainer) return { marked };
 
-  for (const item of taskListContainer.children) {
-    if (!item.offsetParent) continue;
+  // Track which task-item containers we've already clicked to avoid duplicates.
+  const clicked = new Set();
 
-    const rawText = (item.innerText ?? item.textContent) || '';
-    const firstLine = rawText.trim().split('\n')[0].trim();
-    const cleaned = firstLine.replace(/\s+\d+\s*\/\s*\d+\s*$/, '').trim();
-    if (!targets.has(normalizeTaskName(cleaned))) continue;
+  // Scan every visible leaf inside the task list container.
+  // For each one whose text matches a target, walk up to the nearest ancestor
+  // that actually contains buttons — that's the task-item wrapper regardless
+  // of how deep React nests it.
+  for (const leaf of taskListContainer.querySelectorAll('*')) {
+    if (!leaf.offsetParent || leaf.children.length > 0) continue;
 
-    // Skip if already struck through (already done).
-    const alreadyDone = [...item.querySelectorAll('*')].some(el => {
+    const text = (leaf.innerText ?? leaf.textContent)?.trim() || '';
+    const cleaned = text.replace(/\s+\d+\s*\/\s*\d+\s*$/, '').trim();
+    if (cleaned.length < 2 || !targets.has(normalizeTaskName(cleaned))) continue;
+
+    // Walk up to find the task-item wrapper (nearest ancestor with buttons).
+    let taskItem = leaf.parentElement;
+    while (taskItem && taskItem !== taskListContainer) {
+      if (taskItem.querySelectorAll('button, [role="button"]').length > 0) break;
+      taskItem = taskItem.parentElement;
+    }
+    if (!taskItem || taskItem === taskListContainer || clicked.has(taskItem)) continue;
+
+    // Skip if already struck through.
+    const alreadyDone = [...taskItem.querySelectorAll('*')].some(el => {
       if (!el.offsetParent) return false;
-      const dec = window.getComputedStyle(el).textDecorationLine || '';
-      return dec.includes('line-through');
+      return (window.getComputedStyle(el).textDecorationLine || '').includes('line-through');
     });
     if (alreadyDone) continue;
 
-    // The done/check button is the first button in the task item.
-    const btn = item.querySelector('button, [role="button"]');
-    if (btn?.offsetParent) {
-      btn.click();
-      marked++;
-      await sleep(300);
-    }
+    // The done circle is the leftmost visible button in the task item.
+    const buttons = [...taskItem.querySelectorAll('button, [role="button"]')]
+      .filter(btn => btn.offsetParent !== null);
+    if (buttons.length === 0) continue;
+
+    const doneBtn = buttons.reduce((a, b) =>
+      a.getBoundingClientRect().left <= b.getBoundingClientRect().left ? a : b
+    );
+
+    clicked.add(taskItem);
+    doneBtn.click();
+    marked++;
+    await sleep(300);
   }
 
   return { marked };
